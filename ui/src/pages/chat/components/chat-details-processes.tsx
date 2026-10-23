@@ -50,9 +50,12 @@ function ProcessRow(props: {
       role="listitem"
       data-process-id={props.row.processId}
       data-status={props.row.status}
-      data-stoppable={props.row.status === "running" && props.row.canStop ? "" : undefined}
       data-stopping={stop().stopping() ? "" : undefined}
-      data-dismissible={props.row.status === "completed" ? "" : undefined}
+      data-actionable={
+        props.row.status === "completed" || (props.row.status === "running" && props.row.canStop)
+          ? ""
+          : undefined
+      }
     >
       <button
         class="chat-details-processes__open"
@@ -88,7 +91,7 @@ function ProcessRow(props: {
       </button>
       <Show when={props.row.status === "running" && props.row.canStop}>
         <button
-          class="chat-details-processes__stop"
+          class="chat-details-processes__action chat-details-processes__stop"
           type="button"
           title={t("chat.processesPanel.stopProcess")}
           aria-label={t("chat.processesPanel.stop", { name: props.row.name })}
@@ -106,7 +109,7 @@ function ProcessRow(props: {
       </Show>
       <Show when={props.row.status === "completed"}>
         <button
-          class="chat-details-processes__dismiss"
+          class="chat-details-processes__action chat-details-processes__dismiss"
           type="button"
           title={t("chat.processesPanel.dismiss")}
           aria-label={t("chat.processesPanel.dismiss")}
