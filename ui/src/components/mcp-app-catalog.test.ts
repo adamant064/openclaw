@@ -8,6 +8,7 @@ import { createDeferred } from "../../../test/helpers/promise.js";
 import type { GatewayEventFrame } from "../api/gateway.ts";
 import type { ApplicationContext } from "../app/context.ts";
 import { t } from "../i18n/index.ts";
+import { createMcpAppCatalog } from "../lib/mcp-app-catalog.ts";
 import {
   createTestSessionCapability,
   sessionsResult,
@@ -379,14 +380,25 @@ describe("app launch catalog", () => {
   });
 
   it.each([
+    { scope: "operator.admin", discover: true },
+    { scope: "operator.write", discover: true },
     { scope: "operator.read", discover: false },
     { scope: "operator.sessions.read", discover: false },
-    { scope: "operator.sessions.write", discover: true },
+    { scope: "operator.sessions.write", discover: false },
   ])("admits discovery according to granted scope $scope", async ({ scope, discover }) => {
     const request = vi.fn(async () => ({ servers: [] }));
     const { context } = discoveryContext(request, [scope]);
-    mountCatalog(context, { sessionKey: "agent:main:one" });
-    await waitForSolid(() => expect(request.mock.calls).toHaveLength(discover ? 1 : 0));
+    let catalog!: ReturnType<typeof createMcpAppCatalog>;
+    mountSolid(() => {
+      catalog = createMcpAppCatalog(context as ApplicationContext, () => ({
+        sessionKey: "agent:main:one",
+      }));
+      return null;
+    });
+    await catalog.refresh();
+    expect(catalog.available()).toBe(discover);
+    expect(catalog.visible()).toBe(discover);
+    expect(request).toHaveBeenCalledTimes(discover ? 1 : 0);
   });
 
   it("shares discovery and retains focused entries through refresh before remounting", async () => {
