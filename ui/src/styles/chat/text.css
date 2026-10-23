@@ -215,6 +215,10 @@
   place-items: center;
 }
 
+.markdown-table__actions button {
+  color: var(--muted);
+}
+
 .markdown-table__actions .markdown-table__expand {
   display: flex;
   align-items: center;
