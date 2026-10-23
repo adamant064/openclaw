@@ -239,12 +239,7 @@
     .chat-pr__branch,
     .chat-pr__repo,
     .session-progress-card__step,
-    .session-progress-card__step-text,
-    .chat-context__row,
-    .chat-context__label,
-    .chat-context__entry,
-    .chat-context__entry > span:first-child,
-    .chat-context__compact
+    .session-progress-card__step-text
   ) {
   font-family: var(--font-body);
   font-size: var(--details-row-font-size);
@@ -273,11 +268,6 @@
     .chat-details__context-budget,
     .chat-details__context-budget strong,
     .chat-details__stats,
-    .chat-context__tokens,
-    .chat-context__percent,
-    .chat-context__label small,
-    .chat-context__entry > span:last-child,
-    .chat-context__note,
     .chat-details__muted,
     .chat-outputs__status,
     .task-progress-details__count
@@ -334,9 +324,7 @@
     .chat-details-subagents__row,
     .chat-outputs__row,
     .chat-pr.chat-pr--summary,
-    .session-progress-card__step,
-    .chat-context__row,
-    .chat-context__entry
+    .session-progress-card__step
   ) {
   box-sizing: border-box;
   width: 100%;
@@ -395,12 +383,7 @@
 
 .chat-details
   .chat-details-desktop-body
-  :is(
-    .task-progress-details__count,
-    .chat-details__context-budget strong,
-    .chat-context__tokens,
-    .chat-context__percent
-  ) {
+  :is(.task-progress-details__count, .chat-details__context-budget strong) {
   color: var(--muted);
 }
 

@@ -971,14 +971,6 @@ openclaw-pending-session-create {
   gap: 8px;
   min-height: 20px;
 }
-.context-usage__title {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
 .context-usage__context-value {
   color: var(--text);
   font-size: 12px;
@@ -1029,24 +1021,24 @@ openclaw-pending-session-create {
   align-items: baseline;
   margin: 0 0 0 auto;
   font-size: 12px;
-}
-.context-usage__stats div {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 3px;
-}
-.context-usage__stats div:not(:last-child)::after {
-  margin: 0 6px;
-  color: color-mix(in srgb, var(--muted) 50%, transparent);
-  content: "·";
-}
-.context-usage__stats dt {
-  color: var(--muted);
-}
-.context-usage__stats dd {
-  margin: 0;
-  color: var(--text);
-  font-weight: 650;
+  div {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 3px;
+  }
+  div:not(:last-child)::after {
+    margin: 0 6px;
+    color: color-mix(in srgb, var(--muted) 50%, transparent);
+    content: "·";
+  }
+  dt {
+    color: var(--muted);
+  }
+  dd {
+    margin: 0;
+    color: var(--text);
+    font-weight: 650;
+  }
 }
 .context-usage__tray {
   --tray: color-mix(in oklab, var(--text) 3.5%, var(--bg-elevated));
@@ -1065,11 +1057,11 @@ openclaw-pending-session-create {
 }
 .context-usage__identity {
   height: 28px;
-}
-.context-usage__identity .provider-brand-icon {
-  width: 16px;
-  height: 16px;
-  justify-self: center;
+  .provider-brand-icon {
+    width: 16px;
+    height: 16px;
+    justify-self: center;
+  }
 }
 .context-usage__account {
   min-width: 0;
@@ -1156,10 +1148,10 @@ openclaw-pending-session-create {
   font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
-}
-.context-usage__limit-reset svg {
-  width: 10px;
-  height: 10px;
+  svg {
+    width: 10px;
+    height: 10px;
+  }
 }
 .context-usage__limit-value {
   margin-inline-start: auto;
@@ -1186,21 +1178,21 @@ openclaw-pending-session-create {
 }
 .context-usage__skeleton-row {
   height: 26px;
-}
-.context-usage__skeleton-row :is(i, span, b) {
-  height: 8px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--muted) 15%, transparent);
-}
-.context-usage__skeleton-row i {
-  width: 8px;
-  justify-self: center;
-}
-.context-usage__skeleton-row span {
-  width: 70%;
-}
-.context-usage__skeleton-row b {
-  width: 36px;
+  :is(i, span, b) {
+    height: 8px;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--muted) 15%, transparent);
+  }
+  i {
+    width: 8px;
+    justify-self: center;
+  }
+  span {
+    width: 70%;
+  }
+  b {
+    width: 36px;
+  }
 }
 .context-usage__note {
   margin: 10px 0 0;
