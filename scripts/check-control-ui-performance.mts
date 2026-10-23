@@ -59,10 +59,10 @@ const controlUiPerformanceBudgets = {
   // Initial shell plus shared route styles and the route's own stylesheet.
   chatBootCssRequests: 3,
   newBootCssRequests: 3,
-  // Defer optional feature English: 1,273,579 B Chat / 768,843 B New.
-  // Preserve main's relative headroom against the matched b19bade libdeflate11 build.
-  chatBootJsGzipBytes: 1_363_668,
-  newBootJsGzipBytes: 804_656,
+  // Defer optional root English: 1,273,593 B Chat / 767,596 B New.
+  // Preserve main's relative headroom against the matched 808d7141 libdeflate11 build.
+  chatBootJsGzipBytes: 1_362_096,
+  newBootJsGzipBytes: 803_073,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   // Jacob Tomlinson approved +50 B for native inline views (#173135, 2026-10-22).
