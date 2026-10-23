@@ -132,8 +132,9 @@ umbrella skill: it patches the survivor and archives the rest with
 `absorbed_into`. Then it tells you which skill changed. If there is nothing
 durable to learn, it changes nothing.
 
-When the selected memory plugin supports learning (for example
-[Knowledge](/plugins/knowledge)), `/learn` covers both media: procedures for a
+When the selected memory plugin supports learning (see
+[provider-neutral memory runtime](/plugins/sdk-overview/memory-and-context#provider-neutral-memory-runtime)),
+`/learn` covers both media: procedures for a
 repeatable class of task go to learned skills, and facts, preferences,
 decisions, and knowledge about one codebase or person go to memory, following
 the memory plugin's guidance. With `skill_workshop` hidden, `/learn` learns into
