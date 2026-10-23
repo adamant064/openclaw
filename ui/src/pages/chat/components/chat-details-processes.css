@@ -38,7 +38,8 @@
 }
 
 .chat-details-processes__open:focus-visible,
-.chat-details-processes__stop:focus-visible {
+.chat-details-processes__stop:focus-visible,
+.chat-details-processes__dismiss:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -109,12 +110,17 @@
   mask-image: linear-gradient(to right, black calc(100% - 16px), transparent);
 }
 
-.chat-details-processes__row[data-stoppable]:is(:hover, :focus-within, [data-stopping])
+.chat-details-processes__row:is([data-stoppable], [data-dismissible]):is(
+    :hover,
+    :focus-within,
+    [data-stopping]
+  )
   .chat-details-processes__name {
   mask-image: linear-gradient(to right, black calc(100% - 42px), transparent calc(100% - 26px));
 }
 
-.chat-details-processes__stop {
+.chat-details-processes__stop,
+.chat-details-processes__dismiss {
   position: absolute;
   inset-inline-end: 4px;
   top: 50%;
@@ -141,7 +147,7 @@
 }
 
 .chat-details-processes__row:is(:hover, :focus-within, [data-stopping])
-  .chat-details-processes__stop {
+  :is(.chat-details-processes__stop, .chat-details-processes__dismiss) {
   opacity: 1;
   pointer-events: auto;
 }
@@ -170,5 +176,27 @@
 @media (prefers-reduced-motion: reduce) {
   .chat-details-processes__spinner {
     animation: none;
+  }
+}
+
+.chat-details-processes__dismiss {
+  background: none;
+  color: var(--muted);
+}
+
+.chat-details-processes__dismiss > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.chat-details-processes__dismiss:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+@media (hover: none) {
+  .chat-details-processes__dismiss {
+    opacity: 1;
+    pointer-events: auto;
   }
 }
