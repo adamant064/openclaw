@@ -152,6 +152,32 @@ it("shares lineage work across audiences without sharing visibility or stale des
   expect(reads).toHaveBeenCalledTimes(firstReads);
   expect(resolveParent).not.toHaveBeenCalled();
 
+  await fixture.seed("agent:main:unrelated", fixture.profile.id);
+  await projection.ensureMaterialized();
+  selectTaskPublicationSessions(projection, root, allowsAll);
+  const afterCreation = reads.mock.calls.length;
+  await fixture.seed("agent:main:unrelated", fixture.profile.id, {
+    label: "Updated",
+    updatedAt: 2,
+  });
+  await fixture.seed(child, fixture.profile.id, { parentSessionKey: sessionKey, label: "Updated" });
+  await projection.ensureMaterialized();
+  expect(selectTaskPublicationSessions(projection, root, allowsShared)).toEqual(
+    expected([child, leaf, sessionKey]),
+  );
+  expect(reads).toHaveBeenCalledTimes(afterCreation);
+
+  // Permissions consume the replacement row even when lineage itself is unchanged.
+  await fixture.seed(hidden, fixture.profile.id, {
+    parentSessionKey: sessionKey,
+    visibility: "shared",
+  });
+  await projection.ensureMaterialized();
+  expect(
+    selectTaskPublicationSessions(projection, root, (row) => row.entry.visibility !== "draft"),
+  ).toEqual(expected([child, hidden, leaf, sessionKey]));
+  expect(reads).toHaveBeenCalledTimes(afterCreation);
+
   await fixture.seed(leaf, fixture.profile.id, { parentSessionKey: hidden, updatedAt: 2 });
   await projection.ensureMaterialized();
   const current = projection.describe({ agentId: "main", key: sessionKey })!;
