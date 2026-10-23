@@ -1,7 +1,8 @@
-import { existsSync, writeFileSync } from "node:fs";
+import fs, { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { ttsHandlers } from "../gateway/server-methods/tts.js";
 import { withPluginRuntimePluginScope } from "../plugins/runtime/gateway-request-scope.js";
 import { createPluginRuntime } from "../plugins/runtime/index.js";
 import {
@@ -15,6 +16,7 @@ import { observeMainThreadSql } from "../test-utils/main-thread-sql-spies.test-s
 import { useStateDatabaseTempDirs } from "../test-utils/state-database-temp-dirs.js";
 import { shouldAttemptTtsPayload, shouldCleanTtsDirectiveText } from "./tts-config.js";
 import { prepareTtsPreferences } from "./tts-preferences.js";
+import { updateTtsPrefsAsync } from "./tts-settings-write-worker.js";
 import { buildTtsSystemPromptHint, buildTtsSystemPromptHintAsync } from "./tts-settings.js";
 import { resolveTtsConfig, resolveTtsPrefsPath, resolveTtsPrefsPathAsync } from "./tts.js";
 
@@ -29,6 +31,42 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+});
+
+it("persists TTS RPC changes without main-thread flushes and preserves queued settings", async () => {
+  const prefsPath = path.join(root, "settings", "tts.json");
+  vi.stubEnv("OPENCLAW_TTS_PREFS", prefsPath);
+  const flush = vi.spyOn(fs, "fsyncSync");
+  const respond = vi.fn();
+  await expectDefined(
+    ttsHandlers["tts.enable"],
+    "enable TTS",
+  )({
+    params: {},
+    respond,
+    context: { getRuntimeConfig: () => ({}) },
+  } as never);
+  expect(respond).toHaveBeenCalledWith(true, { enabled: true });
+  expect(JSON.parse(fs.readFileSync(prefsPath, "utf8"))).toEqual({ tts: { auto: "always" } });
+  await Promise.all([
+    updateTtsPrefsAsync(prefsPath, { maxLength: 2000 }),
+    updateTtsPrefsAsync(prefsPath, { summarize: false }),
+    updateTtsPrefsAsync(prefsPath, { persona: " Reader " }),
+    updateTtsPrefsAsync(prefsPath, { auto: "off" }),
+  ]);
+  expect(JSON.parse(fs.readFileSync(prefsPath, "utf8"))).toEqual({
+    tts: { auto: "off", maxLength: 2000, summarize: false, persona: "reader" },
+  });
+  expect(flush).not.toHaveBeenCalled();
+  if (process.platform !== "win32") {
+    expect(fs.statSync(prefsPath).mode & 0o777).toBe(0o600);
+    expect(fs.statSync(path.dirname(prefsPath)).mode & 0o777).toBe(0o700);
+  }
+  fs.writeFileSync(prefsPath, '{"tts":');
+  await expect(updateTtsPrefsAsync(prefsPath, { maxLength: 3000 })).rejects.toThrow(
+    "Repair the file or its permissions",
+  );
+  expect(fs.readFileSync(prefsPath, "utf8")).toBe('{"tts":');
 });
 
 it("carries the worker-read path through delivery and plugin prompt rendering without caller SQL", async () => {
