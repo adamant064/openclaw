@@ -136,7 +136,7 @@ are context, as are higher tails with at least 20% fewer collections and no rise
 in total GC. Always report both maximum pauses; the candidate maximum still
 gates above `max(50 ms, 2 × baseline maximum)`.
 
-## Subagent maintenance capture
+## Subagent maintenance and scoped reads
 
 `subagent-maintenance-capture-measure.ts` measures the production session
 maintenance preservation owner with 6,000 synthetic retained subagent runs and
@@ -144,6 +144,37 @@ maintenance preservation owner with 6,000 synthetic retained subagent runs and
 directions, a live-only row, and real worker update/deletion publications after
 preservation preparation. The returned protected-key digest must match across
 baseline and candidate. This measures the maintenance owner, not Gateway RPCs.
+`--team-shape` instead generates 5,000 sessions and 6,000 retained runs with zero
+transcript payload, then installs those runs in the registry and holds 60 child
+execution claims. Existing pending deliveries remain protected alongside the
+running children. Fixture preparation supplies the real requester/controller
+store provenance and persists the active replacements before warming reads.
+Fixture generation and these writes are sequential preparation work.
+Add `--mutate-every 10` to commit an active run replacement every ten operations.
+Mutation time and CPU are included in the measured operation.
+
+`--flow maintenance` is the default. With `--team-shape`, `--flow prompt` calls
+`buildActiveSubagentRuntimeContext` and `--flow control` calls
+`buildControlledSubagentRunsReadContext`, rotating across the parents of the 60
+active runs. These two flows compact settled resident rows through the normal
+registry owner, so selected reads include durable payload hydration; active and
+pending-delivery rows retain their normal full shape. The report counts evicted
+resident payloads. Only the selected read and optional committed mutation are timed;
+maintenance checks and output digesting remain outside measurement. Read time is
+fixed to the fixture's timestamp so recent-history classification and digests
+match across processes; synchronization and performance clocks remain real.
+The report includes each parent's retained/active/selected context counts,
+output size, and digest. Compare `outputsSha256` as well as protected-key digests
+between baseline and candidate. Prompt output size counts characters; control
+size counts selected runs. Control digests omit only the deliberately mutated
+delivery attempt counter and normalize the fixture-directory prefix.
+
+Add `--concentrated-root` for a separately labeled topology stress case. It
+reparents all retained registry generations to one generated root, preserving
+the 4,000 child sessions and 60 active claims in the default team shape. Ordinary
+distributed runs cover roughly six retained generations per active parent;
+concentrated runs exercise the full 6,000-record scope. This is synthetic
+registry topology stress, not the fixture's original session-parent layout.
 
 ```sh
 node --expose-gc --trace-gc-nvp --import ./scripts/tsx.mjs \
@@ -156,10 +187,17 @@ Run each side in a fresh process and a new state directory. Setup and warmup
 precede `CAPTURE_READY`; use preparation CPUs until that marker, then assign the
 pair's interleaved measurement CPUs before the shared start. Use the campaign's
 exclusive lock and production guard, then swap placements for the second pair.
+Alternatively, `--start-file /path/to/start` waits after preparation until that
+file contains a common future epoch in milliseconds for both sides.
 The default one-millisecond yield between captures permits event-loop sampling;
 it is excluded from per-capture latency but included in elapsed time and CPU.
-Allocation includes collected objects. Registry `Map.set` row writes are counted
-in a separate unprofiled capture. GC reports count, total time, maximum pause,
+Use `--allocations` in a separate paired pass for allocation including collected
+objects; the default pass measures unprofiled CPU, capture latency, and GC.
+For a paced minute use `--team-shape --operations 450 --interval-ms 133`.
+`--per-minute 450` projects per-call allocation and CPU at an explicitly assumed
+capture rate; it is not a measured production call rate. Main-thread and process
+CPU are both recorded. Registry `Map.set` row writes are counted
+in a separate unprofiled selected read. GC reports count, total time, maximum pause,
 and tails with sample counts; promotion excludes setup and profiler-stop GC.
 Apply the campaign's sample-count and paired-delta rules. RSS high water includes
 setup. State and profile files remain in the task-owned directory for inspection
@@ -443,19 +481,27 @@ and the optional `--revision` label.
 ## Async context allocation
 
 `async-store-measure.mjs` compares Node's native runner, the shared single-copy
-runner, and experimental parent-linked or indexed carriers. Run on an approved
-benchmark host with Node 26; it imports only the production helper and Node built-ins:
+runner, the consolidated production context fields, and experimental parent-linked
+or indexed carriers. Run on an approved benchmark host with Node 26:
 
 ```sh
-node scripts/perf/async-store-measure.mjs stock 26 200000
-node scripts/perf/async-store-measure.mjs single 26 200000
-node scripts/perf/async-store-measure.mjs linked 26 200000
-node scripts/perf/async-store-measure.mjs slots 26 200000
+node --import ./scripts/tsx.mjs scripts/perf/async-store-measure.mjs stock 26 200000
+node --import ./scripts/tsx.mjs scripts/perf/async-store-measure.mjs single 26 200000
+node --import ./scripts/tsx.mjs scripts/perf/async-store-measure.mjs consolidated 26 200000
+node --import ./scripts/tsx.mjs scripts/perf/async-store-measure.mjs linked 26 200000
+node --import ./scripts/tsx.mjs scripts/perf/async-store-measure.mjs slots 26 200000
 ```
 
 Repeat for 1, 8, 10, 20, 26, and 40 outer stores. Each invocation starts in a fresh
 process, warms 20,000 entries, samples collected allocations at 512-byte intervals,
-then measures unprofiled entry and oldest/middle/newest lookup time separately.
+reports bytes per entry with allocation sample counts, then measures unprofiled
+entry and oldest/middle/newest lookup time separately. The consolidated variant
+enters the same owner fields through one frozen record, sharing their values.
+`nativeFrameBytesPerRun` counts samples rooted at Node's `AsyncContextFrame`
+constructor separately from total entry allocation. Pass a final profile path to
+retain the raw collected-object profile. V8 may inline that constructor out of
+sample stacks; zero native-frame samples yield a `null` frame-byte estimate,
+not evidence of zero frame allocation.
 The persistent carriers are experiments, not production context owners. These
 mechanism measurements do not establish Gateway GC or latency improvements; use
 the concurrent, swapped-core Gateway workload for acceptance.
@@ -837,6 +883,66 @@ participate in normal recovery; their next attempt is delayed one day from the
 reference time. Generate a fresh fixture for each startup comparison. Cron jobs,
 heartbeats, channels, plugins, browser automation and network discovery are
 disabled so this workload does not call models or external integrations.
+
+## Census native async-context frame copies
+
+`async-context-probe.cjs` attributes native `AsyncLocalStorage` frame copies to
+store construction sites. Use it only in an isolated synthetic Gateway on the
+authorized benchmark host, under that host's resource limits and production
+guard. It validates the runtime's private `AsyncContextFrame` Map representation
+at startup and fails clearly if unavailable; Node 26.12 is the campaign runtime.
+Load it before Gateway modules so CommonJS and ESM imports receive the tracked
+constructor. Existing stores appear as `untracked`.
+
+For a synthetic channel-and-tool workload, first prepare the private QA runtime
+as described in [the channel-turn benchmark](../bench-channel-turn.md). From the
+checkout root, create a task-owned entry wrapper and pass it to the harness:
+
+```sh
+mkdir -p .local/async-context-probe
+cat > .local/async-context-probe/entry.mjs <<'EOF'
+import { fileURLToPath } from "node:url";
+process.env.OPENCLAW_ASYNC_CONTEXT_PROBE_OUT = fileURLToPath(
+  new URL("./census.json", import.meta.url),
+);
+await import("../../scripts/perf/async-context-probe.cjs");
+const entry = new URL("../../src/entry.ts", import.meta.url);
+process.argv[1] = fileURLToPath(entry);
+await import(entry.href);
+EOF
+node --import ./scripts/tsx.mjs scripts/bench-channel-turn.mts \
+  --entry .local/async-context-probe/entry.mjs --tool-args-chars 4096
+```
+
+Set probe options inside the wrapper because harnesses sanitize child environments.
+`OPENCLAW_ASYNC_CONTEXT_PROBE_OUT` is required and its parent directory must exist.
+`OPENCLAW_ASYNC_CONTEXT_PROBE_SAMPLE_EVERY` defaults to 8 (approximately one in
+eight copies; 1 samples all), and `OPENCLAW_ASYNC_CONTEXT_PROBE_INTERVAL_MS`
+defaults to 30000. The JSON file is replaced atomically at startup, each interval,
+and normal process exit. Forced termination can lose the final partial interval.
+Use separate wrappers/output paths for baseline and candidate; do not add this
+preload to `NODE_OPTIONS`, which would also instrument children and workers.
+
+`copies` counts native `enterWith` calls, including restorations: native `run`
+copies twice when changing a value, while `runWithAsyncStore` copies once. Sampling
+uses a fixed pseudorandom sequence to avoid always selecting the restoration half.
+`samples`, `frameSizeHistogram`, and `meanFrameEntries` describe the **source**
+frame being copied, including entries whose value is undefined. `meanActiveEntries`
+counts non-undefined values; it makes no claim about their authority or liveness.
+`owners` ranks construction sites by sampled entry presence, with separate active
+and undefined counts. Several stores created at one site can appear in one frame,
+so `entriesPerSample` is a mean count, not a presence probability. `enteringOwners`
+records exact copy counts and sampled source-frame weights for the store issuing
+each copy. Sort `owners` by `active` or `undefined` to inspect those contributions.
+Only code locations and numeric counts are retained; store values are never logged.
+
+This example includes startup plus one cold and ten warm synthetic turns. Record
+the harness's completed turns alongside the census; a failed or shortened workload
+does not give comparable counts. The same wrapper works with a longer `--entry`
+harness for tools/subagents or with `idle-gateway-measure.ts` for an offline
+team-shape fixture. These are instrumented work counts, not measured frame bytes,
+allocation, promotion, GC, or latency. Run allocation profiling and uninstrumented
+acceptance pairs separately with matched workloads and runtime versions.
 
 ## Measure idle Gateway allocation and timer work
 
