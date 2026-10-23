@@ -15,7 +15,6 @@ import {
 import { memorySessionActorOwners } from "../../config/sessions/session-actor-memory-owner.js";
 import { resolveSessionStorePathForScope } from "../../config/sessions/session-store-path.js";
 import type { TtsProviderAttempt, TtsResult, TtsStatusEntry } from "../../tts/tts-runtime-types.js";
-import { updateTtsPrefs as persistTtsPrefs } from "../../tts/tts-settings-writes.js";
 
 const ttsMocks = vi.hoisted(() => ({
   getLastTtsAttempt: vi.fn(),
@@ -44,7 +43,8 @@ vi.mock("../../tts/provider-registry.js", () => ({
 }));
 
 vi.mock("../../tts/tts.js", () => ttsMocks);
-vi.mock("../../tts/tts-settings-write-worker.js", () => ({
+vi.mock("../../tts/tts-settings-write-worker.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../tts/tts-settings-write-worker.js")>()),
   updateTtsPrefsAsync: ttsMocks.updateTtsPrefsAsync,
 }));
 
@@ -161,11 +161,16 @@ describe("handleTtsCommands status fallback reporting", () => {
     const malformed = '{"tts":{"provider":"custom",';
     fs.writeFileSync(prefsPath, malformed);
     ttsMocks.resolveTtsPrefsPathAsync.mockResolvedValue(prefsPath);
-    ttsMocks.updateTtsPrefsAsync.mockImplementationOnce(async (targetPath, patch) =>
-      persistTtsPrefs(targetPath, patch),
-    );
+    const { updateTtsPrefsAsync } = await vi.importActual<
+      typeof import("../../tts/tts-settings-write-worker.js")
+    >("../../tts/tts-settings-write-worker.js");
+    ttsMocks.updateTtsPrefsAsync.mockImplementationOnce(updateTtsPrefsAsync);
 
     const result = await handleTtsCommands(buildTtsParams("/tts limit 2000"), true);
+
+    await expect(ttsMocks.updateTtsPrefsAsync.mock.results[0]?.value).rejects.toThrow(
+      "Repair the file or its permissions",
+    );
 
     expect(expectReply(result).text).toContain("Repair the preference file or its permissions");
     expect(fs.readFileSync(prefsPath, "utf8")).toBe(malformed);

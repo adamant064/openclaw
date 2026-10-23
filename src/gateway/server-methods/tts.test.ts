@@ -44,7 +44,8 @@ const mocks = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("../../tts/tts-settings-write-worker.js", () => ({
+vi.mock("../../tts/tts-settings-write-worker.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../tts/tts-settings-write-worker.js")>()),
   updateTtsPrefsAsync: mocks.updateTtsPrefsAsync,
 }));
 

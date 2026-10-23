@@ -411,16 +411,15 @@ vi.mock("../tts/tts.js", () => ({
   textToSpeech: mocks.textToSpeech,
 }));
 
-vi.mock("../tts/tts-settings-write-worker.js", () => ({
+vi.mock("../tts/tts-settings-write-worker.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../tts/tts-settings-write-worker.js")>()),
   updateTtsPrefsAsync: mocks.updateTtsPrefsAsync,
 }));
 
-vi.mock("../tts/provider-registry.js", () => ({
+vi.mock("../tts/provider-registry.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../tts/provider-registry.js")>()),
   canonicalizeSpeechProviderId: vi.fn((provider: string) => provider),
   listSpeechProviders: mocks.listSpeechProviders,
-  normalizeSpeechProviderId: vi.fn(
-    (provider: string | undefined) => provider?.trim().toLowerCase() || undefined,
-  ),
 }));
 
 // mock-isolation: Command routing uses fixture providers without the auth and plugin runtime graph.
