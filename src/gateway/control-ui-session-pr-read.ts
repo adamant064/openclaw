@@ -168,7 +168,14 @@ function withControlUiTaskPrTarget(
   if (!target || root.entry.incognito || isIncognitoSessionKey(root.key)) {
     return target;
   }
-  const select = () => selectTaskPublicationSessions(projection, root, getAllows());
+  const selected = {
+    agentId: root.agentId,
+    key: root.key,
+    storeTarget: root.storeTarget,
+    generation: root.generation,
+    entry: { sessionId: root.entry.sessionId, lifecycleRevision: root.entry.lifecycleRevision },
+  };
+  const select = () => selectTaskPublicationSessions(projection, selected, getAllows());
   const sessions = select();
   const taskReceipts = { sessions, ...(ownerProfileId ? { ownerProfileId } : {}) };
   return {

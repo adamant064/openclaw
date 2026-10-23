@@ -127,6 +127,7 @@ it("shares lineage work across audiences without sharing visibility or stale des
   await projection.ensureMaterialized();
   const root = projection.describe({ agentId: "main", key: sessionKey })!;
   const reads = vi.spyOn(projection, "selectEntries");
+  const captures = vi.spyOn(projection, "capture");
   const resolveParent = vi.spyOn(records, "parentReference");
   const expected = (keys: string[]) =>
     keys.map((key) => ({
@@ -142,6 +143,7 @@ it("shares lineage work across audiences without sharing visibility or stale des
     expected([child, hidden, leaf, sessionKey]),
   );
   const firstReads = reads.mock.calls.length;
+  const firstCaptures = captures.mock.calls.length;
   expect(firstReads).toBeGreaterThan(0);
   expect(selectTaskPublicationSessions(projection, root, allowsShared)).toEqual(
     expected([child, leaf, sessionKey]),
@@ -150,6 +152,7 @@ it("shares lineage work across audiences without sharing visibility or stale des
     expected([child, hidden, leaf, sessionKey]),
   );
   expect(reads).toHaveBeenCalledTimes(firstReads);
+  expect(captures).toHaveBeenCalledTimes(firstCaptures);
   expect(resolveParent).not.toHaveBeenCalled();
 
   await fixture.seed("agent:main:unrelated", fixture.profile.id);

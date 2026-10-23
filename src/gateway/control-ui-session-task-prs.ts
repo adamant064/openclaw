@@ -7,7 +7,7 @@ import { registerOpenClawStateDatabaseLifecycleListener } from "../state/opencla
 import { captureOpenClawStateReadContext } from "../state/openclaw-state-worker-context.js";
 import type { ControlUiSessionTaskPullRequest } from "./control-ui-contract.js";
 import { SessionRowFactsPending } from "./session-row-prepared-read.js";
-import { hasEntry, type EntryRow, type Lookup } from "./session-row-projection-record.js";
+import { hasEntry, type EntryRow, type Lookup, type Row } from "./session-row-projection-record.js";
 import type { SessionRowProjection } from "./session-row-projection.js";
 
 type PublicationNode = {
@@ -16,19 +16,26 @@ type PublicationNode = {
   session: TaskPublicationRead["sessions"][number];
   children?: PublicationNode[];
 };
+type PublicationRow = Pick<EntryRow, "agentId" | "key" | "storeTarget" | "generation"> & {
+  entry: Pick<EntryRow["entry"], "sessionId" | "lifecycleRevision">;
+};
 // Lineage revisions own structural facts, never a viewer's permission to consume them.
 const nodesByRevision = new WeakMap<object, Map<EntryRow["generation"], PublicationNode>>();
+// Display rows retire with sharing publications, independently of long-lived lineage.
+const rowsByRevision = new WeakMap<object, Map<PublicationNode, Row>>();
 
 /** Traverse the row owner's indexed lineage; neither checkout nor transcript is evidence. */
 export function selectTaskPublicationSessions(
   projection: SessionRowProjection,
-  root: EntryRow,
+  root: PublicationRow,
   allows: (row: EntryRow) => boolean,
 ): TaskPublicationRead["sessions"] {
   // Registry publications can defer parent-index updates until row preparation.
   void projection.state;
   const nodes = getOrCreateWeakOwnerMap(nodesByRevision, projection.readTaskPublicationRevision());
-  const prepare = (row: EntryRow): PublicationNode => {
+  const revision = projection.sharingRevision;
+  const rows = revision ? getOrCreateWeakOwnerMap(rowsByRevision, revision) : undefined;
+  const prepare = (row: PublicationRow): PublicationNode => {
     const retained = nodes.get(row.generation);
     if (retained) {
       return retained;
@@ -51,7 +58,13 @@ export function selectTaskPublicationSessions(
   const sessions: TaskPublicationRead["sessions"] = [];
   for (const node of pending) {
     const { identity } = node;
-    const row = projection.capture(node.query);
+    let row = rows?.get(node);
+    if (!row) {
+      row = projection.capture(node.query);
+      if (row) {
+        rows?.set(node, row);
+      }
+    }
     if (row && (row.sharingEntry !== row.storedEntry || row.entryAcquisitionPending)) {
       throw new SessionRowFactsPending([node.query]);
     }
