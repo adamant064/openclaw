@@ -17,11 +17,15 @@ import {
   loadTranscriptEventsSync,
   upsertSessionEntryCore,
 } from "../../config/sessions/session-accessor.js";
+import * as controllerDiagnostics from "../../sessions/session-controller.diagnostics.js";
 import {
   beginReplyMessageInjectionTarget,
   bindSessionControllerSourceTurnId,
   captureReplyMessageInjectionTarget,
 } from "../../sessions/session-controller.js";
+import { captureSessionTarget } from "../../sessions/session-controller.lifecycle.js";
+import { retireSessionControllerInput } from "../../sessions/session-controller.mailbox-source.js";
+import { reserveSessionControllerSource } from "../../sessions/session-controller.mailbox.js";
 import { createExpectedProfileBinding } from "../expected-profile.js";
 import { dispatchInboundMessageMock, installGatewayTestHooks } from "../test-helpers.js";
 import { bindChatProfile } from "./chat-send-admission-fixtures.test-support.js";
@@ -162,9 +166,15 @@ it.for(["terminal-pending", "matching-tombstone", "unrelated-tombstone"] as cons
   },
 );
 
-it.for(["same profile", "profile merge", "target closed"] as const)(
-  "keeps bound native V2 steering on its captured owner after preparation (%s)",
-  async (change, { signal }) => {
+it.for([
+  { change: "same profile", boundary: "native" },
+  { change: "profile merge", boundary: "native" },
+  { change: "target closed", boundary: "native" },
+  { change: "same profile", boundary: "mailbox" },
+  { change: "profile merge", boundary: "mailbox" },
+] as const)(
+  "keeps bound native V2 steering on its captured owner ($change at $boundary)",
+  async ({ change, boundary }, { signal }) => {
     await using fixture = await createFixture();
     fixture.params.queueMode = "steer";
     const operation = activeOperation(fixture);
@@ -180,8 +190,35 @@ it.for(["same profile", "profile merge", "target closed"] as const)(
     const release = createDeferred();
     const finished = createDeferred();
     const terminal = createDeferred();
+    const nativeEntered = vi.fn();
     const enqueued = vi.fn();
     const cancel = vi.fn();
+    const older =
+      boundary === "mailbox"
+        ? reserveSessionControllerSource(fixture.scope.sessionKey, {
+            policy: { mode: "followup" },
+            target: captureSessionTarget({
+              storeScope: fixture.scope.storePath,
+              sessionKey: fixture.scope.sessionKey,
+              incarnation: fixture.scope.sessionId,
+              agentId: fixture.scope.agentId,
+            }),
+          })
+        : undefined;
+    const logPhase = controllerDiagnostics.logSessionControllerPhase;
+    const phaseObserver = vi
+      .spyOn(controllerDiagnostics, "logSessionControllerPhase")
+      .mockImplementation((event) => {
+        logPhase(event);
+        if (
+          older &&
+          event.phase === "injection-predecessor" &&
+          event.status === "waiting" &&
+          event.sourceId === fixture.params.idempotencyKey
+        ) {
+          entered.resolve();
+        }
+      });
     vi.mocked(fixture.context.broadcast).mockImplementation((event, payload) => {
       if (
         event === "chat" &&
@@ -198,7 +235,10 @@ it.for(["same profile", "profile merge", "target closed"] as const)(
         version: 2,
         isAvailable: () => true,
         queueMessage: async (text, options, assertCurrent) => {
-          entered.resolve();
+          nativeEntered();
+          if (!older) {
+            entered.resolve();
+          }
           try {
             await withinTest(release.promise, signal);
             assertCurrent();
@@ -215,6 +255,11 @@ it.for(["same profile", "profile merge", "target closed"] as const)(
       const respond = await withinTest(request, signal);
       expect(respond.mock.calls[0]).toMatchObject({ 0: true, 1: { status: "started" } });
       await withinTest(entered.promise, signal);
+      if (older) {
+        expect(older.mailbox.owner.active).toBe(operation);
+        expect(older.injectionOrder.resolved).toBe(false);
+        expect(nativeEntered).not.toHaveBeenCalled();
+      }
       expect(enqueued).not.toHaveBeenCalled();
       expect(dispatchInboundMessageMock).not.toHaveBeenCalled();
       if (change === "profile merge") {
@@ -223,13 +268,26 @@ it.for(["same profile", "profile merge", "target closed"] as const)(
         operation.complete();
       }
       release.resolve();
-      await withinTest(finished.promise, signal);
+      if (older) {
+        retireSessionControllerInput(older);
+      } else {
+        await withinTest(finished.promise, signal);
+      }
       await withinTest(terminal.promise, signal);
       if (change === "same profile") {
+        expect(nativeEntered).toHaveBeenCalledOnce();
         expect(enqueued).toHaveBeenCalledExactlyOnceWith(fixture.approvedContent);
         expect(respond.mock.calls[0]?.[1]).toMatchObject({ status: "started" });
       } else {
+        expect(nativeEntered).toHaveBeenCalledTimes(older ? 0 : 1);
         expect.soft(enqueued).not.toHaveBeenCalled();
+        const errorMessage = expect.stringContaining(
+          boundary === "mailbox"
+            ? "operator source identity changed; start a new request"
+            : change === "profile merge"
+              ? "Selected account changed"
+              : "authority is no longer current",
+        );
         const failure = fixture.context.dedupe.get(`chat:${fixture.params.idempotencyKey}`);
         expect.soft(failure).toMatchObject({
           ok: false,
@@ -240,21 +298,13 @@ it.for(["same profile", "profile merge", "target closed"] as const)(
           expect.objectContaining({
             runId: fixture.params.idempotencyKey,
             state: "error",
-            errorMessage: expect.stringContaining(
-              change === "profile merge"
-                ? "Selected account changed"
-                : "authority is no longer current",
-            ),
+            errorMessage,
           }),
           expect.anything(),
         );
         expect.soft(failure?.error).toMatchObject({
           code: "UNAVAILABLE",
-          message: expect.stringContaining(
-            change === "profile merge"
-              ? "Selected account changed"
-              : "authority is no longer current",
-          ),
+          message: errorMessage,
         });
       }
       expect.soft(dispatchInboundMessageMock).not.toHaveBeenCalled();
@@ -292,6 +342,10 @@ it.for(["same profile", "profile merge", "target closed"] as const)(
         expect.soft(appended[0]).not.toHaveProperty("message.__openclaw.steerTargetRunId");
       }
     } finally {
+      phaseObserver.mockRestore();
+      if (older) {
+        retireSessionControllerInput(older);
+      }
       release.resolve();
       await request;
     }
