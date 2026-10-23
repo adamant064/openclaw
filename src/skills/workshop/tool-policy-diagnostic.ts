@@ -150,12 +150,12 @@ const skillWorkshopPolicyProbe = {
 // A stand-in for one plugin tool, carrying the owner metadata that plugin-ID and
 // group:plugins policy entries match, so policy can be checked without constructing it.
 function pluginPolicyProbe(name: string, pluginId: string): AnyAgentTool {
-  const probe = {
+  const probe: AnyAgentTool = {
     ...skillWorkshopPolicyProbe,
     name,
     label: name,
     description: "Policy availability check.",
-  } as AnyAgentTool;
+  };
   setPluginToolMeta(probe, { pluginId, optional: false });
   return probe;
 }
