@@ -28,6 +28,7 @@ import { resolveOperatorRoleAgents } from "../operator-role-policy.js";
 import { WRITE_SCOPE } from "../operator-scopes.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
 import { resolveStoredSessionKeyForAgentStore } from "../session-store-key.js";
+import { respondError } from "./response.js";
 import { readGatewayRequestMutationAuthority } from "./session-mutation-guards.js";
 import type { GatewayRequestHandlers } from "./types.js";
 import { defineValidatedGatewayHandler } from "./validation.js";
@@ -41,13 +42,10 @@ export const pluginHostHookHandlers: GatewayRequestHandlers = {
     ({ respond, client, context }) => {
       const methods = context.getGatewayMethodRegistry?.();
       if (!methods) {
-        respond(
-          false,
-          undefined,
-          errorShape(
-            ErrorCodes.UNAVAILABLE,
-            "Gateway plugin capabilities are unavailable in this runtime.",
-          ),
+        respondError(
+          respond,
+          ErrorCodes.UNAVAILABLE,
+          "Gateway plugin capabilities are unavailable in this runtime.",
         );
         return;
       }
@@ -108,13 +106,10 @@ export const pluginHostHookHandlers: GatewayRequestHandlers = {
         (entry) => entry.pluginId === pluginId && entry.action.id === actionId,
       );
       if (!registration || !pluginLoaded) {
-        respond(
-          false,
-          undefined,
-          errorShape(
-            ErrorCodes.UNAVAILABLE,
-            `unknown plugin session action: ${pluginId}/${actionId}`,
-          ),
+        respondError(
+          respond,
+          ErrorCodes.UNAVAILABLE,
+          `unknown plugin session action: ${pluginId}/${actionId}`,
         );
         return;
       }
