@@ -3,6 +3,7 @@ import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ttsHandlers } from "../gateway/server-methods/tts.js";
+import { closeDefaultRetainedNativeWorkerSource } from "../infra/worker-native-lifecycle.js";
 import { withPluginRuntimePluginScope } from "../plugins/runtime/gateway-request-scope.js";
 import { createPluginRuntime } from "../plugins/runtime/index.js";
 import {
@@ -80,6 +81,26 @@ it("orders synchronous SDK setters after already accepted asynchronous preferenc
   const expected = { tts: { summarize: false, maxLength: 3000 } };
   expect(immediatelyPersisted).toEqual(expected);
   expect(JSON.parse(fs.readFileSync(prefsPath, "utf8"))).toEqual(expected);
+
+  fs.writeFileSync(prefsPath, '{"tts":');
+  const failed = updateTtsPrefsAsync(prefsPath, { maxLength: 2000 });
+  expect(() => setTtsMaxLength(prefsPath, 3000)).toThrow("Repair the file or its permissions");
+  await expect(failed).rejects.toThrow("Repair the file or its permissions");
+  expect(fs.readFileSync(prefsPath, "utf8")).toBe('{"tts":');
+});
+
+it("drains accepted preferences before closing the worker owner and accepts writes after restart", async () => {
+  const prefsPath = path.join(root, "settings", "tts.json");
+  const first = updateTtsPrefsAsync(prefsPath, { summarize: false });
+  const second = updateTtsPrefsAsync(prefsPath, { maxLength: 2000 });
+  await Promise.all([first, second, closeDefaultRetainedNativeWorkerSource()]);
+  expect(JSON.parse(fs.readFileSync(prefsPath, "utf8"))).toEqual({
+    tts: { summarize: false, maxLength: 2000 },
+  });
+  await updateTtsPrefsAsync(prefsPath, { maxLength: 3000 });
+  expect(JSON.parse(fs.readFileSync(prefsPath, "utf8"))).toEqual({
+    tts: { summarize: false, maxLength: 3000 },
+  });
 });
 
 it("carries the worker-read path through delivery and plugin prompt rendering without caller SQL", async () => {

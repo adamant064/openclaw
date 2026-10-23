@@ -1,8 +1,5 @@
 import path from "node:path";
-import {
-  finallyRetainedOperation,
-  type RetainedOperation,
-} from "@openclaw/worker-runtime/lifecycle";
+import { finallyRetainedOperation } from "@openclaw/worker-runtime/lifecycle";
 import { resolveStateDir } from "../config/paths.js";
 import { resolveRuntimeProcessEntrypointUrl } from "../infra/runtime-process-url.js";
 import {
@@ -21,7 +18,7 @@ export type TtsPreferenceWrite = {
 
 type TtsPreferenceWriter = {
   pool: ReturnType<typeof createOwnedWorkerTaskPool<TtsPreferenceWrite, void>>;
-  pending: Set<RetainedOperation<void>>;
+  pending: Set<Promise<void>>;
   waitSignal: Int32Array<SharedArrayBuffer>;
   closing: boolean;
 };
@@ -31,10 +28,10 @@ const owners = resolveGlobalSingleton(
   () => new WeakMap<RetainedNativeWorkerSource, TtsPreferenceWriter>(),
 );
 
-function startWrite(
+function prepareWrite(
   prefsPath: string,
   patch: TtsPreferenceWrite["patch"],
-): { owner: TtsPreferenceWriter; write: RetainedOperation<void> } {
+): { owner: TtsPreferenceWriter; input: TtsPreferenceWrite } {
   const source = captureRetainedNativeWorkerSource({ runtimeGeneration: undefined });
   let owner = owners.get(source);
   if (!owner) {
@@ -56,23 +53,17 @@ function startWrite(
     const retained = owner;
     source.retain(owner, async () => {
       retained.closing = true;
-      await Promise.allSettled([...retained.pending].map((write) => write.result));
+      await Promise.allSettled(retained.pending);
       await retained.pool.close();
     });
   }
   if (owner.closing) {
     throw new Error("TTS preference writer is closing");
   }
-  const task = owner.pool.startTask(
-    { prefsPath: path.resolve(prefsPath), stateDir: resolveStateDir(), patch },
-    { progressSignal: owner.waitSignal },
-  );
-  const write = finallyRetainedOperation(task, () => task.release());
-  owner.pending.add(write);
-  const pending = owner.pending;
-  const settled = () => pending.delete(write);
-  void write.result.then(settled, settled);
-  return { owner, write };
+  return {
+    owner,
+    input: { prefsPath: path.resolve(prefsPath), stateDir: resolveStateDir(), patch },
+  };
 }
 
 /** Retain the private-store boundary until fs-safe's durable async writer is nonblocking. */
@@ -80,21 +71,25 @@ export async function updateTtsPrefsAsync(
   prefsPath: string,
   patch: TtsPreferenceWrite["patch"],
 ): Promise<void> {
-  return startWrite(prefsPath, patch).write.result;
+  const { owner, input } = prepareWrite(prefsPath, patch);
+  const write = owner.pool.run(input, {});
+  owner.pending.add(write);
+  try {
+    await write;
+  } finally {
+    owner.pending.delete(write);
+  }
 }
 
 /** Legacy SDK calls join the same FIFO owner without depending on host Promise reactions. */
 export function updateTtsPrefsSync(prefsPath: string, patch: TtsPreferenceWrite["patch"]): void {
-  const { owner, write } = startWrite(prefsPath, patch);
+  const { owner, input } = prepareWrite(prefsPath, patch);
+  const task = owner.pool.startTask(input, { progressSignal: owner.waitSignal });
+  const write = finallyRetainedOperation(task, () => task.release());
   for (;;) {
     const observed = Atomics.load(owner.waitSignal, 0);
-    // Release earlier async tasks too: their Promise callbacks cannot run during this wait.
-    for (const pending of owner.pending) {
-      pending.service();
-      if (pending.read().status !== "pending") {
-        owner.pending.delete(pending);
-      }
-    }
+    // Ordinary async tasks release their slots during service, without Promise reactions.
+    write.service();
     const outcome = write.read();
     if (outcome.status === "fulfilled") {
       return;
