@@ -2,11 +2,14 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerModalSurface } from "../../components/overlay-registry.ts";
+import { sidebarPanelFixtureParams } from "../../test-helpers/chat-pane-embedded-panels.ts";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
 import { makeChatHost } from "./chat-host.test-support.ts";
+import { sidebarPanelDefinitions } from "./chat-pane-embedded-panels.ts";
 import { createChatPaneRails } from "./chat-pane-rails.ts";
 import {
   createGatewayBrowserClientFixture,
+  createPaneHeaderWorkspaceFixture,
   createSessionCapabilityFixture,
   createTestChatPane,
   type TestChatPane,
@@ -59,10 +62,25 @@ afterEach(() => document.body.replaceChildren());
 
 describe("chat pane sidebar toggles", () => {
   it("does not open Side Chat with session-only permission", () => {
-    const { state, dispatch } = shortcutPane();
+    const { pane, state, dispatch } = shortcutPane();
+    const menuActions = () =>
+      pane
+        .renderPaneHeader(
+          createPaneHeaderWorkspaceFixture(state),
+          undefined,
+          false,
+          undefined,
+          false,
+          null,
+          state.sidebarLayout,
+          sidebarPanelDefinitions(sidebarPanelFixtureParams(state)),
+        )
+        .header.panelMenuActions?.map((action) => action.id);
+    expect(menuActions()).toContain("session-companion");
     state.hello!.auth!.scopes = ["operator.sessions.write"];
     expect(dispatch(panelCases[1])).toBe(false);
     expect(isSidebarSlotVisible(state.sidebarLayout, "companion")).toBe(false);
+    expect(menuActions()).not.toContain("session-companion");
   });
   it("activates a stored Workspace tab from the rail", () => {
     const sidebarLayout = openSlot(openSlot({ columns: [] }, "workspace"), "terminal");
