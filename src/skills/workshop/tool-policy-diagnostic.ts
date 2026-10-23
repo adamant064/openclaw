@@ -146,6 +146,34 @@ const skillWorkshopPolicyProbe = {
   execute: async () => ({ content: [], details: {} }),
 } as AnyAgentTool;
 
+// A named stand-in for a tool, so policy can be checked without constructing it.
+function policyProbe(name: string): AnyAgentTool {
+  return {
+    ...skillWorkshopPolicyProbe,
+    name,
+    label: name,
+    description: "Policy availability check.",
+  };
+}
+
+/**
+ * Returns which of `toolNames` the final tool-policy composition keeps. Name-based policy
+ * (allow, deny, globs, profiles) applies; the probes carry no plugin ownership metadata.
+ */
+export function resolveAllowedToolNames(params: {
+  config: OpenClawConfig;
+  conversationCapabilityProfile: ResolvedConversationCapabilityProfile;
+  toolNames: readonly string[];
+}): Set<string> {
+  const tools = applyFinalEffectiveToolPolicy({
+    bundledTools: params.toolNames.map(policyProbe),
+    config: params.config,
+    conversationCapabilityProfile: params.conversationCapabilityProfile,
+    warn: () => {},
+  });
+  return new Set(tools.map((tool) => tool.name));
+}
+
 /** Applies the real final tool-policy composition used by agent sessions and /learn. */
 export function resolveSkillWorkshopToolPolicyAvailability(params: {
   config: OpenClawConfig;
