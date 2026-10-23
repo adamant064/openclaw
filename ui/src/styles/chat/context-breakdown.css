@@ -280,7 +280,6 @@ openclaw-chat-context-panel {
 }
 .chat-context--popover .chat-context__row {
   grid-template-columns: 16px minmax(0, 1fr) auto;
-  column-gap: 6px;
   min-height: 26px;
   height: 26px;
   padding: 0;
@@ -295,7 +294,6 @@ openclaw-chat-context-panel {
   white-space: nowrap;
 }
 .chat-context--popover .chat-context__note {
-  font-size: 12px;
   margin: 0;
 }
 .chat-context--popover .context-usage__report-skeleton {
