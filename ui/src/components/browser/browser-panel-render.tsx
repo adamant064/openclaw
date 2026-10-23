@@ -218,7 +218,7 @@ function ViewportContent(
         }
       >
         <PanelEmptyState
-          presentation={props.mobilePresentation ? undefined : "desktop"}
+          presentation={props.mobilePresentation ? "mobile" : "desktop"}
           icon={<Icon name="globe" />}
           heading={t("chat.sidePanel.browser")}
           description={t("browser.notRunning")}
@@ -254,7 +254,7 @@ function ViewportContent(
       </Match>
       <Match when={!props.controller.view}>
         <PanelEmptyState
-          presentation={props.mobilePresentation ? undefined : "desktop"}
+          presentation={props.mobilePresentation ? "mobile" : "desktop"}
           icon={<Icon name="globe" />}
           heading={t("chat.sidePanel.browser")}
           description={t("chat.sidePanel.browserEmpty")}
