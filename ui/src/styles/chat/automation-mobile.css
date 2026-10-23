@@ -131,3 +131,7 @@
   display: grid;
   justify-content: normal;
 }
+
+.session-automation-mobile:has(> openclaw-panel-empty-state) {
+  padding: 0;
+}

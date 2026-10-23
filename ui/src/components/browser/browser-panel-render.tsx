@@ -187,13 +187,13 @@ function ViewportContent(
       </Match>
       <Match when={props.emptyError}>
         <PanelEmptyState
-          presentation="desktop"
+          presentation={props.mobilePresentation ? "mobile" : "desktop"}
           icon={<Icon name="globe" />}
           heading={t("browser.loadFailed")}
           description={props.controller.errorText!}
           action={
             <button
-              class="bp-btn bp-empty-action"
+              class="btn"
               type="button"
               disabled={props.controller.loading}
               onClick={() => void props.controller.retryEmptyError()}
@@ -225,7 +225,7 @@ function ViewportContent(
           action={
             props.controller.host.fixedTab ? undefined : (
               <button
-                class={["bp-btn", { "bp-empty-action": !props.mobilePresentation }]}
+                class="btn"
                 type="button"
                 onClick={() => void props.controller.startBrowserNow()}
               >
@@ -242,7 +242,7 @@ function ViewportContent(
           </div>
         ) : (
           <PanelEmptyState
-            presentation="desktop"
+            presentation={props.mobilePresentation ? "mobile" : "desktop"}
             icon={<Icon name="globe" />}
             heading={t("chat.sidePanel.browser")}
             description={props.controller.unavailableTabText!}

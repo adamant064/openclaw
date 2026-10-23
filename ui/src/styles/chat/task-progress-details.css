@@ -534,4 +534,9 @@
   > .chat-mobile-details-page__body {
   padding: 16px 16px calc(88px + env(safe-area-inset-bottom));
   scroll-padding-bottom: calc(88px + env(safe-area-inset-bottom));
+
+  &:has(> .task-progress-details--mobile > openclaw-panel-empty-state) {
+    padding-block-start: 0;
+    padding-inline: 0;
+  }
 }
