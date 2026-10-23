@@ -17,6 +17,7 @@ import { useStateDatabaseTempDirs } from "../test-utils/state-database-temp-dirs
 import { shouldAttemptTtsPayload, shouldCleanTtsDirectiveText } from "./tts-config.js";
 import { prepareTtsPreferences } from "./tts-preferences.js";
 import { updateTtsPrefsAsync } from "./tts-settings-write-worker.js";
+import { setTtsMaxLength } from "./tts-settings-writes.js";
 import { buildTtsSystemPromptHint, buildTtsSystemPromptHintAsync } from "./tts-settings.js";
 import { resolveTtsConfig, resolveTtsPrefsPath, resolveTtsPrefsPathAsync } from "./tts.js";
 
@@ -67,6 +68,18 @@ it("persists TTS RPC changes without main-thread flushes and preserves queued se
     "Repair the file or its permissions",
   );
   expect(fs.readFileSync(prefsPath, "utf8")).toBe('{"tts":');
+});
+
+it("orders synchronous SDK setters after already accepted asynchronous preferences", async () => {
+  const prefsPath = path.join(root, "settings", "tts.json");
+  const first = updateTtsPrefsAsync(prefsPath, { summarize: false });
+  const second = updateTtsPrefsAsync(prefsPath, { maxLength: 2000 });
+  setTtsMaxLength(prefsPath, 3000);
+  const immediatelyPersisted = JSON.parse(fs.readFileSync(prefsPath, "utf8"));
+  await Promise.all([first, second]);
+  const expected = { tts: { summarize: false, maxLength: 3000 } };
+  expect(immediatelyPersisted).toEqual(expected);
+  expect(JSON.parse(fs.readFileSync(prefsPath, "utf8"))).toEqual(expected);
 });
 
 it("carries the worker-read path through delivery and plugin prompt rendering without caller SQL", async () => {

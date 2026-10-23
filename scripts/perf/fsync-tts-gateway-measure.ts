@@ -177,6 +177,22 @@ fs.fsyncSync = (fd) => {
   }
 };
 syncBuiltinESMExports();
+// Calibrate the probe through the real RPC before accepting a relocated-worker comparison.
+measuring = true;
+Atomics.store(workerProbe, 0, 1);
+await run(-1);
+measuring = false;
+Atomics.store(workerProbe, 0, 0);
+assert.equal(
+  syncCalls + Atomics.load(workerProbe, 1),
+  2,
+  "The probe must observe both durable flushes",
+);
+assert.equal(syncCalls, values.baseline ? 2 : 0, "The requested TTS owner must perform the write");
+syncCalls = 0;
+blockedMs = 0;
+Atomics.store(workerProbe, 1, 0);
+Atomics.store(workerProbe, 2, 0);
 const loop = monitorEventLoopDelay({ resolution: 10 });
 const collections: Array<{ kind: number; ms: number }> = [];
 let begin = Infinity;

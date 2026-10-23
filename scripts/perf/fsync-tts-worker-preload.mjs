@@ -1,7 +1,7 @@
 // Paired with fsync-tts-gateway-measure.ts; never enabled by the product.
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-import { getEnvironmentData, isMainThread } from "node:worker_threads";
+import workerThreads, { getEnvironmentData, isMainThread } from "node:worker_threads";
 
 const probe = getEnvironmentData("openclaw.synthetic-tts-fsync");
 if (!isMainThread && probe) {
@@ -20,5 +20,19 @@ if (!isMainThread && probe) {
       Atomics.add(control, 2, Math.round((performance.now() - started) * 1000));
     }
   };
+  // Retained task workers are created by a supervisor isolate with explicit execArgv.
+  workerThreads.Worker = new Proxy(workerThreads.Worker, {
+    construct(target, [filename, options]) {
+      return new target(filename, {
+        ...options,
+        execArgv: [
+          ...(options?.execArgv ??
+            process.execArgv.filter((arg) => arg !== "--expose-gc" && arg !== "--trace-gc-nvp")),
+          "--import",
+          import.meta.url,
+        ],
+      });
+    },
+  });
   syncBuiltinESMExports();
 }

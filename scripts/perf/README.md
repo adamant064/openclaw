@@ -3703,7 +3703,9 @@ A synthetic 50 ms delay applies to every `fsyncSync` in both the main isolate an
 worker isolates during the measured interval. The companion
 `fsync-tts-worker-preload.mjs` is benchmark instrumentation only. This preserves
 comparable storage waits when persistence moves to a worker; total flush work is
-reported separately from main-thread blocked time. The first, unmeasured request
+reported separately from main-thread blocked time. An unmeasured calibration RPC
+requires both durable flushes to be visible to the probe, including workers
+created by a retained-task supervisor. The first, unmeasured request
 reports cold-write latency separately. While waiting for the common start, both
 sides repeat an unmeasured write every ten seconds so an idle writer does not
 retire before the steady-state interval.
@@ -3751,7 +3753,7 @@ preserving total flush count and persisted bytes. Process CPU includes the
 Gateway's workers and its in-process WebSocket driver. Main-thread and
 whole-process-isolate GC are both reported, including promotion and maximum
 pauses; native subprocess GC is outside these counters. Apply the shared v5.3
-rules described in the preceding workload: qualify tails by sample count, treat
+rules described above: qualify tails by sample count, treat
 opposite-signed deltas or greater-than-5× baseline spread as inconclusive, and
 run a third pair when an inconclusive metric would gate. Every latency and loop
 tail includes its sample count. This simulation establishes persistence-path
