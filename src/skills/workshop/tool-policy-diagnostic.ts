@@ -12,6 +12,7 @@ import type { ToolPolicyFilterEvent } from "../../agents/tool-policy-pipeline.js
 import type { AnyAgentTool } from "../../agents/tools/common.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { AgentToolsConfig } from "../../config/types.tools.js";
+import { setPluginToolMeta } from "../../plugins/tool-metadata.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import { resolveSkillWorkshopToolConstructionBlock } from "./tool-availability.js";
 
@@ -146,27 +147,31 @@ const skillWorkshopPolicyProbe = {
   execute: async () => ({ content: [], details: {} }),
 } as AnyAgentTool;
 
-// A named stand-in for a tool, so policy can be checked without constructing it.
-function policyProbe(name: string): AnyAgentTool {
-  return {
+// A stand-in for one plugin tool, carrying the owner metadata that plugin-ID and
+// group:plugins policy entries match, so policy can be checked without constructing it.
+function pluginPolicyProbe(name: string, pluginId: string): AnyAgentTool {
+  const probe = {
     ...skillWorkshopPolicyProbe,
     name,
     label: name,
     description: "Policy availability check.",
-  };
+  } as AnyAgentTool;
+  setPluginToolMeta(probe, { pluginId, optional: false });
+  return probe;
 }
 
 /**
- * Returns which of `toolNames` the final tool-policy composition keeps. Name-based policy
- * (allow, deny, globs, profiles) applies; the probes carry no plugin ownership metadata.
+ * Returns which of one plugin's `toolNames` the final tool-policy composition keeps,
+ * including name, glob, profile, plugin-ID and group:plugins entries.
  */
-export function resolveAllowedToolNames(params: {
+export function resolveAllowedPluginToolNames(params: {
   config: OpenClawConfig;
   conversationCapabilityProfile: ResolvedConversationCapabilityProfile;
+  pluginId: string;
   toolNames: readonly string[];
 }): Set<string> {
   const tools = applyFinalEffectiveToolPolicy({
-    bundledTools: params.toolNames.map(policyProbe),
+    bundledTools: params.toolNames.map((name) => pluginPolicyProbe(name, params.pluginId)),
     config: params.config,
     conversationCapabilityProfile: params.conversationCapabilityProfile,
     warn: () => {},

@@ -25,7 +25,7 @@ import {
   SKILL_DO_NOT_CAPTURE_PROMPT,
 } from "../../skills/workshop/skill-authoring-standards.js";
 import {
-  resolveAllowedToolNames,
+  resolveAllowedPluginToolNames,
   resolveSkillWorkshopToolPolicyAvailability,
 } from "../../skills/workshop/tool-policy-diagnostic.js";
 import { applyCommandTextToParams } from "./command-context-rewrite.js";
@@ -229,9 +229,10 @@ async function resolveLearnMedia(params: HandleCommandsParams): Promise<LearnMed
         conversationCapabilityProfile: capabilityProfile,
       }).available;
     const memoryTools = memoryLearn
-      ? resolveAllowedToolNames({
+      ? resolveAllowedPluginToolNames({
           config: params.cfg,
           conversationCapabilityProfile: capabilityProfile,
+          pluginId: memoryLearn.pluginId,
           toolNames: memoryLearn.toolNames.filter(runtimeAllows),
         })
       : new Set<string>();

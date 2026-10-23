@@ -204,6 +204,7 @@ describe("learn command", () => {
         availableTools.has("memory_save") ? ["Memory: follow the provider learning skill."] : [],
       );
       getMemoryLearnContribution.mockReturnValue({
+        pluginId: "acme-memory",
         toolNames: ["memory_save", "memory_search"],
         buildGuidance,
       });
@@ -235,6 +236,27 @@ describe("learn command", () => {
       expect(params.ctx.BodyForAgent).toContain("The user asked you to learn.");
       expect(params.ctx.BodyForAgent).toContain("Learn what is worth keeping");
       expect(params.ctx.BodyForAgent).not.toContain("skill_workshop");
+    });
+
+    it("honors plugin-ID and group:plugins policy entries for memory learning tools", async () => {
+      const buildGuidance = memoryLearn();
+      const allowed = buildLearnParams("/learn", { tools: { allow: ["acme-memory"] } });
+
+      expect((await handleLearnCommand(allowed, true))?.shouldContinue).toBe(true);
+      expect(buildGuidance).toHaveBeenCalledWith({
+        availableTools: new Set(["memory_save", "memory_search"]),
+      });
+
+      buildGuidance.mockClear();
+      for (const deny of [["acme-memory"], ["group:plugins"]]) {
+        const denied = buildLearnParams("/learn", { tools: { deny } });
+        const result = await handleLearnCommand(denied, true);
+        expect(denied.ctx.BodyForAgent).not.toContain(
+          "Memory: follow the provider learning skill.",
+        );
+        expect(result?.shouldContinue).toBe(true);
+      }
+      expect(buildGuidance).not.toHaveBeenCalled();
     });
 
     it("names both media when policy hides both", async () => {

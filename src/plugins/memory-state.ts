@@ -177,11 +177,16 @@ export function getMemoryCapabilityRegistration(): MemoryPluginCapabilityRegistr
 
 /** The selected memory provider's /learn contribution, when it declares one. */
 export function getMemoryLearnContribution():
-  | { toolNames: readonly string[]; buildGuidance: MemoryLearnGuidanceBuilder }
+  | { pluginId: string; toolNames: readonly string[]; buildGuidance: MemoryLearnGuidanceBuilder }
   | undefined {
-  const capability = getMemoryCapability()?.capability;
-  return capability?.learnToolNames?.length && capability.learnGuidanceBuilder
-    ? { toolNames: capability.learnToolNames, buildGuidance: capability.learnGuidanceBuilder }
+  const registration = getMemoryCapability();
+  const capability = registration?.capability;
+  return registration && capability?.learnToolNames?.length && capability.learnGuidanceBuilder
+    ? {
+        pluginId: registration.pluginId,
+        toolNames: capability.learnToolNames,
+        buildGuidance: capability.learnGuidanceBuilder,
+      }
     : undefined;
 }
 
