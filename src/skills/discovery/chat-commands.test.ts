@@ -98,7 +98,8 @@ function buildWorkspaceSkillCommandSpecs(
 }
 
 vi.mock("../../auto-reply/commands-registry.data.js", () => ({
-  getChatCommands: () => [],
+  // mock-isolation: These skill fixtures have no reserved built-in commands.
+  listReservedChatSlashCommandNames: () => new Set<string>(),
 }));
 
 vi.mock("./command-specs.js", () => ({

@@ -4,9 +4,11 @@ import { once } from "node:events";
 import {
   appendFileSync,
   createWriteStream,
+  existsSync,
   mkdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:http";
@@ -71,6 +73,9 @@ const { values } = parseArgs({
     "capture-responses": { type: "boolean", default: false },
     "trace-gc": { type: "boolean", default: false },
     "worker-memory": { type: "boolean", default: false },
+    "worker-retained-heap": { type: "boolean", default: false },
+    "worker-heap-snapshot": { type: "boolean", default: false },
+    "worker-baseline-dir": { type: "string" },
     "baseline-owners": { type: "boolean", default: false },
     "stress-tools": { type: "boolean", default: false },
     "stress-session-store": { type: "boolean", default: false },
@@ -140,6 +145,12 @@ const { values } = parseArgs({
 });
 if (!values["state-dir"]) {
   throw new Error("--state-dir is required (existing team-shape fixture)");
+}
+if (values["worker-heap-snapshot"] && !values["worker-retained-heap"]) {
+  throw new Error("--worker-heap-snapshot requires --worker-retained-heap");
+}
+if (values["worker-baseline-dir"] && path.resolve(values.entry) !== path.resolve("src/entry.ts")) {
+  throw new Error("--worker-baseline-dir requires --entry src/entry.ts");
 }
 if (
   (values["github-options-observe"] &&
@@ -568,6 +579,51 @@ if (values["github-options-connected"] && fixture.githubOptionsConnected !== tru
 }
 const output = path.join(root, `broadcast-measure-${Date.now()}`);
 mkdirSync(output);
+type WorkerHeapEvidence = {
+  prefix: string;
+  script: string;
+  threadId: number;
+  before?: Record<string, unknown>;
+  start?: Record<string, unknown>;
+  stop?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  snapshot?: Record<string, unknown>;
+};
+const workerHeapEvidence = {
+  complete: true,
+  acceptanceTiming:
+    !values.allocations &&
+    !values["stream-start-allocations"] &&
+    !idleScenario &&
+    (!soakScenario || retainedProfileMs === 0),
+  errors: [] as string[],
+  workers: [] as WorkerHeapEvidence[],
+};
+async function workerHeapCommand(worker: WorkerHeapEvidence, operation: string) {
+  const id = `${operation}-${randomUUID()}`;
+  const commandPath = `${worker.prefix}.command.json`;
+  const replyPath = `${worker.prefix}.${id}.json`;
+  try {
+    writeFileSync(`${commandPath}.tmp`, JSON.stringify({ id, operation }));
+    renameSync(`${commandPath}.tmp`, commandPath);
+    const deadline = Date.now() + (operation === "snapshot" ? 120_000 : 30_000);
+    while (!existsSync(replyPath) && Date.now() < deadline) {
+      await delay(25);
+    }
+    const reply: unknown = JSON.parse(readFileSync(replyPath, "utf8"));
+    if (!isRecord(reply) || reply.ok !== true || reply.complete === false) {
+      throw new Error(`Worker heap ${operation} failed: ${JSON.stringify(reply)}`);
+    }
+    return reply;
+  } catch (error) {
+    const message = `${worker.script}/${worker.threadId} ${operation}: ${String(error)}`;
+    workerHeapEvidence.complete = false;
+    workerHeapEvidence.errors.push(message);
+    return { ok: false, error: message };
+  }
+}
+const targetWorkerScript = (script: string) =>
+  /^(sqlite-store|prepared-model-catalog)\.worker\.[cm]?[jt]s$/.test(script);
 const project = Array.isArray(fixture.projectWorktrees) ? fixture.projectWorktrees[0] : undefined;
 const fixtureSessionCount = typeof fixture.sessionCount === "number" ? fixture.sessionCount : 0;
 const patchKeys =
@@ -1863,6 +1919,10 @@ const env = {
     ? { OPENCLAW_BENCH_SESSION_PROJECTION_SOURCE: sessionProjectionSource }
     : {}),
   ...(values["worker-memory"] ? { OPENCLAW_BENCH_WORKER_MEMORY_DIR: output } : {}),
+  ...(values["worker-retained-heap"] ? { OPENCLAW_BENCH_RETAINED_WORKER_DIR: output } : {}),
+  ...(values["worker-baseline-dir"]
+    ? { OPENCLAW_BENCH_BASELINE_DIR: path.resolve(values["worker-baseline-dir"]) }
+    : {}),
   ...(values["baseline-owners"] ? { OPENCLAW_BENCH_TRANSCRIPT_BASELINE_OWNERS: "1" } : {}),
   ...(values["github-observation-owner"]
     ? { OPENCLAW_BENCH_GITHUB_OBSERVATION_OWNER: path.resolve(values["github-observation-owner"]) }
@@ -3508,6 +3568,9 @@ try {
       ...(values["worker-memory"] || values["baseline-owners"]
         ? ["--import", "./scripts/perf/transcript-worker-memory-preload.ts"]
         : []),
+      ...(values["worker-retained-heap"] || values["worker-baseline-dir"]
+        ? ["--import", "./scripts/perf/worker-retained-heap-preload.ts"]
+        : []),
       ...(values["dashboard-rpc"] ? ["--import", dashboardPreload] : []),
       ...(values["github-options-observe"]
         ? ["--import", "./scripts/perf/github-options-measure-preload.ts"]
@@ -3928,6 +3991,37 @@ try {
     );
   }
   console.log("PHASE warmed");
+  if (values["worker-retained-heap"]) {
+    const resources = await readGatewayResources(gateway, { includeWorkers: true });
+    const live = [
+      ...(resources.workers?.workerHeaps ?? []),
+      ...(resources.workers?.workerMemoryMissing ?? []),
+    ].filter((worker) => targetWorkerScript(worker.script));
+    for (const worker of live) {
+      const prefix = path.join(output, `worker-${gateway.pid}-${worker.threadId}`);
+      if (worker.threadId === undefined || !existsSync(`${prefix}.ready.json`)) {
+        workerHeapEvidence.complete = false;
+        workerHeapEvidence.errors.push(
+          `Missing worker heap preload: ${worker.script}/${worker.threadId}`,
+        );
+        continue;
+      }
+      const evidence: WorkerHeapEvidence = {
+        prefix,
+        script: worker.script,
+        threadId: worker.threadId,
+      };
+      workerHeapEvidence.workers.push(evidence);
+      evidence.before = await workerHeapCommand(evidence, "collect");
+    }
+    for (const script of ["sqlite-store.worker.js", "prepared-model-catalog.worker.js"]) {
+      const workers = workerHeapEvidence.workers.filter((worker) => worker.script === script);
+      if (!workers.length) {
+        workerHeapEvidence.complete = false;
+        workerHeapEvidence.errors.push(`No warmed target worker: ${script}`);
+      }
+    }
+  }
   if (startAt !== undefined) {
     if (Date.now() >= startAt) {
       throw new Error("--start-at passed before fixture readiness and warmup");
@@ -3956,6 +4050,13 @@ try {
       samplingIntervalBytes: soakSamplingIntervalBytes,
       includeWorkers: values["worker-allocations"],
     });
+  }
+  const startedHeapWorkers: WorkerHeapEvidence[] = [];
+  for (const worker of workerHeapEvidence.workers) {
+    worker.start = await workerHeapCommand(worker, "start");
+    if (worker.start.ok === true) {
+      startedHeapWorkers.push(worker);
+    }
   }
   const measurementStartedAt = Date.now();
   const measuredGateway = gateway;
@@ -4729,6 +4830,26 @@ try {
       ]);
     }
   }
+  for (const worker of startedHeapWorkers) {
+    worker.stop = await workerHeapCommand(worker, "stop");
+  }
+  if (values["worker-retained-heap"]) {
+    const resources = await readGatewayResources(gateway, { includeWorkers: true });
+    const late = [
+      ...(resources.workers?.workerHeaps ?? []),
+      ...(resources.workers?.workerMemoryMissing ?? []),
+    ].filter(
+      (worker) =>
+        targetWorkerScript(worker.script) &&
+        !startedHeapWorkers.some((started) => started.threadId === worker.threadId),
+    );
+    if (late.length) {
+      workerHeapEvidence.complete = false;
+      workerHeapEvidence.errors.push(
+        `Workers outside measured census: ${JSON.stringify(late.map(({ script, threadId }) => ({ script, threadId })))}`,
+      );
+    }
+  }
   let fingerprintRetention;
   if (values["fingerprint-retention"]) {
     // Keep the diagnostic baseline through reopening. Attribute retention only
@@ -4795,6 +4916,12 @@ try {
         ? { workerManifestPath: `${soakAllocationPath}.workers.json` }
         : {}),
     };
+  }
+  // Both worker and whole-workload timing windows have ended before forced collections.
+  for (const worker of startedHeapWorkers) {
+    if (worker.stop?.ok === true) {
+      worker.after = await workerHeapCommand(worker, "collect");
+    }
   }
   let retainedProfile;
   if (soakScenario) {
@@ -4918,6 +5045,21 @@ try {
     }
     writeFileSync(path.join(output, "list-responses.json"), JSON.stringify(listResponses));
   }
+  if (values["worker-heap-snapshot"]) {
+    // Capture serially after every metric/profile window; snapshots cannot alter recorded timings.
+    const heapBytes = (worker: WorkerHeapEvidence) =>
+      isRecord(worker.after?.memory) && typeof worker.after.memory.heapUsed === "number"
+        ? worker.after.memory.heapUsed
+        : -1;
+    for (const script of ["sqlite-store.worker.js", "prepared-model-catalog.worker.js"]) {
+      const largest = startedHeapWorkers
+        .filter((worker) => worker.script === script && worker.after?.ok === true)
+        .toSorted((a, b) => heapBytes(b) - heapBytes(a))[0];
+      if (largest) {
+        largest.snapshot = await workerHeapCommand(largest, "snapshot");
+      }
+    }
+  }
   // Process exit plus drained log streams makes promotion accounting independent of pipe buffering.
   await cleanup();
   let wholeSoakGc;
@@ -4942,6 +5084,7 @@ try {
   }
   const result = {
     output,
+    ...(values["worker-retained-heap"] ? { workerHeapEvidence } : {}),
     scenario,
     verifyHistoryReplay,
     revision: values.revision ?? null,
