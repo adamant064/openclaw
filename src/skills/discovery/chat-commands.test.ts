@@ -97,8 +97,8 @@ function buildWorkspaceSkillCommandSpecs(
   });
 }
 
+// mock-isolation: These skill fixtures have no reserved built-in commands.
 vi.mock("../../auto-reply/commands-registry.data.js", () => ({
-  // mock-isolation: These skill fixtures have no reserved built-in commands.
   listReservedChatSlashCommandNames: () => new Set<string>(),
 }));
 
