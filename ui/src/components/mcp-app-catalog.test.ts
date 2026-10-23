@@ -14,6 +14,7 @@ import {
   sessionsResult,
 } from "../lib/sessions/session-capability.test-support.ts";
 import { AppsPage } from "../pages/apps/apps-page.tsx";
+import { createInitializationContext } from "../pages/chat/chat-pane.test-support.ts";
 import { createApplicationGateway } from "../test-helpers/application-context-fixtures.ts";
 import {
   createGatewayRequestMock,
@@ -387,10 +388,14 @@ describe("app launch catalog", () => {
     { scope: "operator.sessions.write", discover: false },
   ])("admits discovery according to granted scope $scope", async ({ scope, discover }) => {
     const request = vi.fn(async () => ({ servers: [] }));
-    const { context } = discoveryContext(request, [scope]);
+    const context = createInitializationContext(createTestGatewayClient(request));
+    context.gateway.snapshot.hello = gatewayHelloForMethods(["mcp.app.discover"], [scope]);
+    vi.spyOn(context.sessions, "describe").mockResolvedValue({
+      session: { key: "agent:main:one", kind: "direct", updatedAt: 1 },
+    });
     let catalog!: ReturnType<typeof createMcpAppCatalog>;
     mountSolid(() => {
-      catalog = createMcpAppCatalog(context as ApplicationContext, () => ({
+      catalog = createMcpAppCatalog(context, () => ({
         sessionKey: "agent:main:one",
       }));
       return null;
